@@ -1,0 +1,35 @@
+# Visual Studio and user-specific files
+.vs/
+.idea/
+*.csproj.user
+*.suo
+*.user
+*.DotSettings.user
+
+# .NET build output
+**/bin/
+**/obj/
+TestResults/
+coverage/
+coverage.*
+*.trx
+*.pdb
+
+# Published application and installer output
+app/
+publish/
+installer/output/
+installer/verify-*/
+*.msi
+*.exe
+*.dll
+
+# Exported chat data and local archives
+*.codex-chatpack
+*.zip
+*.7z
+
+# Operating-system files
+Thumbs.db
+Desktop.ini
+.DS_Store

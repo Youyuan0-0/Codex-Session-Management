@@ -1,0 +1,84 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package
+    Name="Codex 会话热同步"
+    Manufacturer="Local Utility"
+    Version="1.2.1"
+    Language="2052"
+    UpgradeCode="D9F9CEEA-654F-4FEE-98AC-E0529EC30CD5"
+    Scope="perUser">
+
+    <SummaryInformation Description="安装 Codex 会话热同步" />
+    <MajorUpgrade DowngradeErrorMessage="已安装更新版本的 Codex 会话热同步。" />
+    <MediaTemplate EmbedCab="yes" />
+    <Property Id="ARPPRODUCTICON" Value="AppIcon" />
+    <Property Id="DISABLEADVTSHORTCUTS" Value="1" />
+
+    <Icon Id="AppIcon" SourceFile="$(var.ProjectDir)..\Assets\app-icon.ico" />
+
+    <StandardDirectory Id="LocalAppDataFolder">
+      <Directory Id="ProgramsDirectory" Name="Programs">
+        <Directory Id="INSTALLFOLDER" Name="Codex 会话热同步">
+          <Component Id="MainApplication" Guid="F6D1BE7A-4B30-4FED-B85D-E21BE23B1D2A">
+            <File
+              Id="MainExecutable"
+              Source="$(var.ProjectDir)..\publish\1.2.1\Codex会话热同步.exe" />
+            <RegistryValue
+              Root="HKCU"
+              Key="Software\Local Utility\CodexSessionHotSync"
+              Name="MainInstalled"
+              Type="integer"
+              Value="1"
+              KeyPath="yes" />
+            <Shortcut
+              Id="DesktopShortcut"
+              Directory="DesktopFolder"
+              Name="Codex 会话热同步"
+              Description="同步、导入与导出 Codex 聊天记录"
+              Target="[#MainExecutable]"
+              WorkingDirectory="INSTALLFOLDER"
+              Icon="AppIcon"
+              IconIndex="0"
+              Advertise="no" />
+            <Shortcut
+              Id="StartMenuShortcut"
+              Directory="ProgramMenuFolder"
+              Name="Codex 会话热同步"
+              Description="同步、导入与导出 Codex 聊天记录"
+              Target="[#MainExecutable]"
+              WorkingDirectory="INSTALLFOLDER"
+              Icon="AppIcon"
+              IconIndex="0"
+              Advertise="no" />
+            <RemoveFolder Id="RemoveInstallFolder" Directory="INSTALLFOLDER" On="uninstall" />
+            <RemoveFolder Id="RemoveProgramsDirectory" Directory="ProgramsDirectory" On="uninstall" />
+          </Component>
+
+          <Directory Id="AssetsFolder" Name="Assets">
+            <Component Id="ApplicationAssets" Guid="60D2BE99-CC75-4AD9-BFA1-9F4FE54FA473">
+              <File
+                Id="ApplicationIconPng"
+                Source="$(var.ProjectDir)..\publish\1.2.1\Assets\app-icon.png" />
+              <RegistryValue
+                Root="HKCU"
+                Key="Software\Local Utility\CodexSessionHotSync"
+                Name="AssetsInstalled"
+                Type="integer"
+                Value="1"
+                KeyPath="yes" />
+              <RemoveFolder Id="RemoveAssetsFolder" Directory="AssetsFolder" On="uninstall" />
+            </Component>
+          </Directory>
+        </Directory>
+      </Directory>
+    </StandardDirectory>
+
+    <StandardDirectory Id="DesktopFolder" />
+    <StandardDirectory Id="ProgramMenuFolder" />
+
+    <Feature Id="Complete" Title="Codex 会话热同步" Level="1">
+      <ComponentRef Id="MainApplication" />
+      <ComponentRef Id="ApplicationAssets" />
+    </Feature>
+  </Package>
+</Wix>
