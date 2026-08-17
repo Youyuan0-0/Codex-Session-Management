@@ -11,7 +11,7 @@
     <AssemblyName>Codex会话热同步</AssemblyName>
     <ApplicationIcon>Assets\app-icon.ico</ApplicationIcon>
     <ApplicationManifest>app.manifest</ApplicationManifest>
-    <Version>1.2.1</Version>
+    <Version>1.3.0</Version>
     <Company>Local Utility</Company>
     <Product>Codex 会话热同步</Product>
     <Description>Codex chat synchronization, compact export, import, and project path mapping utility.</Description>

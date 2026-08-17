@@ -29,7 +29,8 @@ internal sealed class ChatPackService
         bool includeArchived,
         string destinationPath,
         IProgress<string>? progress = null,
-        CancellationToken cancellationToken = default)
+        CancellationToken cancellationToken = default,
+        IReadOnlySet<string>? selectedSessionIds = null)
     {
         string codexHome = CodexConfigService.NormalizeCodexHome(requestedCodexHome);
         string destination = Path.GetFullPath(destinationPath);
@@ -37,9 +38,19 @@ internal sealed class ChatPackService
         progress?.Report("正在扫描可导出的聊天记录…");
         SessionScanResult scan = await _jsonl.ScanAsync(codexHome, includeArchived, cancellationToken);
         IReadOnlyList<SessionRecord> sessions = JsonlSessionService.SelectCanonicalSessions(scan.Sessions);
+        if (selectedSessionIds is not null)
+        {
+            sessions = sessions
+                .Where(item => selectedSessionIds.Contains(item.Id))
+                .ToArray();
+        }
+
         if (sessions.Count == 0)
         {
-            throw new InvalidOperationException("没有找到可以导出的聊天记录。");
+            throw new InvalidOperationException(
+                selectedSessionIds is null
+                    ? "没有找到可以导出的聊天记录。"
+                    : "所选项目中没有找到可以导出的聊天记录。");
         }
 
         IReadOnlyList<DatabaseLocation> locations = await _sqlite.DiscoverLocationsAsync(codexHome, cancellationToken);
@@ -176,6 +187,53 @@ internal sealed class ChatPackService
         };
     }
 
+    public async Task<ChatPackExportPreview> ReadExportPreviewAsync(
+        string requestedCodexHome,
+        bool includeArchived,
+        CancellationToken cancellationToken = default)
+    {
+        string codexHome = CodexConfigService.NormalizeCodexHome(requestedCodexHome);
+        SessionScanResult scan = await _jsonl.ScanAsync(codexHome, includeArchived, cancellationToken);
+        IReadOnlyList<SessionRecord> sessions = JsonlSessionService.SelectCanonicalSessions(scan.Sessions);
+        if (sessions.Count == 0)
+        {
+            throw new InvalidOperationException("没有找到可以导出的聊天记录。");
+        }
+
+        PreparedGlobalStateFile state = await _globalState.PrepareAsync(
+            codexHome,
+            cancellationToken: cancellationToken);
+        List<ChatPackExportProject> projects = sessions
+            .GroupBy(item => ComparisonPath(item.Cwd), StringComparer.OrdinalIgnoreCase)
+            .Select(group =>
+            {
+                SessionRecord sample = group.First();
+                string source = group.Key.Length > 0
+                    ? CodexPathService.ToDesktopPath(sample.Cwd)
+                    : string.Empty;
+                int projectlessSessions = group.Count(item =>
+                    state.ProjectlessThreadIds.Contains(item.Id) || string.IsNullOrWhiteSpace(item.Cwd));
+                return new ChatPackExportProject
+                {
+                    SourcePath = source,
+                    ProjectName = ProjectDisplayName(source, projectlessSessions, group.Count()),
+                    SessionCount = group.Count(),
+                    SessionIds = group
+                        .Select(item => item.Id)
+                        .ToHashSet(StringComparer.Ordinal),
+                };
+            })
+            .OrderByDescending(item => item.SourcePath.Length > 0)
+            .ThenBy(item => item.ProjectName, StringComparer.CurrentCultureIgnoreCase)
+            .ToList();
+        return new ChatPackExportPreview
+        {
+            CodexHome = codexHome,
+            IncludeArchived = includeArchived,
+            Projects = projects,
+        };
+    }
+
     public async Task<ChatPackPreview> ReadPreviewAsync(
         string packagePath,
         string requestedCodexHome,
@@ -197,20 +255,11 @@ internal sealed class ChatPackService
                     ? CodexPathService.ToDesktopPath(sample.OriginalProjectPath)
                     : string.Empty;
                 int projectlessSessions = group.Count(item => item.Projectless);
-                string projectName = requiresPathMapping ? ProjectName(source) : "无项目会话（无路径）";
-                if (requiresPathMapping && projectlessSessions == group.Count())
-                {
-                    projectName += "（无项目）";
-                }
-                else if (requiresPathMapping && projectlessSessions > 0)
-                {
-                    projectName += "（含无项目会话）";
-                }
 
                 return new ChatPackProjectMapping
                 {
                     SourcePath = source,
-                    ProjectName = projectName,
+                    ProjectName = ProjectDisplayName(source, projectlessSessions, group.Count()),
                     SessionCount = group.Count(),
                     RequiresPathMapping = requiresPathMapping,
                     TargetPath = requiresPathMapping ? ResolveLocalProjectPath(source, localRoots) : string.Empty,
@@ -1085,6 +1134,22 @@ internal sealed class ChatPackService
         string normalized = ComparisonPath(path).TrimEnd('\\');
         int separator = normalized.LastIndexOf('\\');
         return separator >= 0 ? normalized[(separator + 1)..] : normalized;
+    }
+
+    private static string ProjectDisplayName(string sourcePath, int projectlessSessions, int totalSessions)
+    {
+        if (string.IsNullOrWhiteSpace(sourcePath))
+        {
+            return "无项目会话（无路径）";
+        }
+
+        string projectName = ProjectName(sourcePath);
+        if (projectlessSessions == totalSessions)
+        {
+            return projectName + "（无项目）";
+        }
+
+        return projectlessSessions > 0 ? projectName + "（含无项目会话）" : projectName;
     }
 
     private static string ComparisonPath(string? path) =>

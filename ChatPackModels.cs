@@ -41,6 +41,22 @@ internal sealed record ChatPackProjectMapping
     public bool ImportSessions { get; set; } = true;
 }
 
+internal sealed record ChatPackExportProject
+{
+    public required string SourcePath { get; init; }
+    public required string ProjectName { get; init; }
+    public required int SessionCount { get; init; }
+    public required IReadOnlySet<string> SessionIds { get; init; }
+    public bool ExportSessions { get; set; } = true;
+}
+
+internal sealed record ChatPackExportPreview
+{
+    public required string CodexHome { get; init; }
+    public required bool IncludeArchived { get; init; }
+    public required IReadOnlyList<ChatPackExportProject> Projects { get; init; }
+}
+
 internal sealed record ChatPackPreview
 {
     public required string PackagePath { get; init; }

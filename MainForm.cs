@@ -1024,6 +1024,51 @@ internal sealed class MainForm : Form
             return;
         }
 
+        ChatPackExportPreview preview;
+        SetBusy(true);
+        _topology.SetState(SyncTopologyState.Busy, "正在扫描聊天记录", progress: 6);
+        SetRail(RailState.Busy, "正在整理可导出的项目…", "读取会话项目路径与归档状态", 6);
+        try
+        {
+            preview = await _chatPackService.ReadExportPreviewAsync(
+                _codexHomeBox.Text,
+                _includeArchivedCheck.Checked);
+        }
+        catch (Exception error)
+        {
+            _topology.SetState(SyncTopologyState.Error, "无法准备导出", "未创建聊天包");
+            SetRail(RailState.Error, "无法读取可导出的聊天记录", error.Message, 0);
+            AppendLog("导出失败：" + error.Message);
+            return;
+        }
+        finally
+        {
+            SetBusy(false);
+        }
+
+        int exportableSessions = preview.Projects.Sum(item => item.SessionCount);
+        _topology.SetState(
+            SyncTopologyState.Ready,
+            "聊天记录已整理",
+            $"{preview.Projects.Count:N0} 个项目 · {exportableSessions:N0} 个会话",
+            0);
+        SetRail(
+            RailState.Ready,
+            $"发现 {preview.Projects.Count:N0} 个可导出项目",
+            $"共 {exportableSessions:N0} 个会话，请选择需要打包的项目",
+            0);
+
+        using ProjectExportDialog selectionDialog = new(
+            _theme,
+            preview.CodexHome,
+            preview.Projects);
+        if (selectionDialog.ShowDialog(this) != DialogResult.OK)
+        {
+            return;
+        }
+
+        IReadOnlySet<string> selectedSessionIds = selectionDialog.SelectedSessionIds;
+
         string initialDirectory = Directory.Exists(_settings.LastExportDirectory)
             ? _settings.LastExportDirectory!
             : Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
@@ -1052,10 +1097,11 @@ internal sealed class MainForm : Form
                 SetRail(RailState.Busy, message, "正在压缩完整会话数据", 55);
             });
             ChatPackExportResult result = await _chatPackService.ExportAsync(
-                _codexHomeBox.Text,
-                _includeArchivedCheck.Checked,
+                preview.CodexHome,
+                preview.IncludeArchived,
                 dialog.FileName,
-                progress);
+                progress,
+                selectedSessionIds: selectedSessionIds);
             _settings = _settings with { LastExportDirectory = Path.GetDirectoryName(result.PackagePath) };
             SaveSettings();
             _topology.SetState(SyncTopologyState.Success, "导出完成", $"{result.SessionCount:N0} 个会话已打包", 100);

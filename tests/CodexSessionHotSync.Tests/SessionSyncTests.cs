@@ -498,6 +498,86 @@ public sealed class SessionSyncTests
     }
 
     [Fact]
+    public async Task ExportCanIncludeOnlySelectedProjects()
+    {
+        SqliteRuntime.Initialize();
+        string root = Path.Combine(Path.GetTempPath(), "CodexSessionHotSyncTests", Guid.NewGuid().ToString("N"));
+        string source = Path.Combine(root, "source");
+        string keepProject = Path.Combine(root, "workspaces", "KeepProject");
+        string skipProject = Path.Combine(root, "workspaces", "SkipProject");
+        try
+        {
+            string sessions = Path.Combine(source, "sessions", "2026", "08", "17");
+            Directory.CreateDirectory(sessions);
+            Directory.CreateDirectory(keepProject);
+            Directory.CreateDirectory(skipProject);
+
+            string keepId = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
+            string skipId = "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb";
+            string attachmentId = "cccccccc-cccc-cccc-cccc-cccccccccccc";
+            string skippedAttachment = Path.Combine(
+                source,
+                "attachments",
+                attachmentId,
+                "pasted-text.txt");
+            Directory.CreateDirectory(Path.GetDirectoryName(skippedAttachment)!);
+            await File.WriteAllTextAsync(skippedAttachment, "only the skipped project references this attachment");
+
+            await WriteSessionAsync(
+                Path.Combine(sessions, $"rollout-2026-08-17T10-00-00-{keepId}.jsonl"),
+                keepId,
+                "openai",
+                keepProject,
+                "2026-08-17T02:00:00Z");
+            await WriteSessionAsync(
+                Path.Combine(sessions, $"rollout-2026-08-17T11-00-00-{skipId}.jsonl"),
+                skipId,
+                "openai",
+                skipProject,
+                "2026-08-17T03:00:00Z",
+                CodexPathService.ToDesktopPath(skippedAttachment));
+
+            ChatPackService chatPack = new();
+            ChatPackExportPreview exportPreview = await chatPack.ReadExportPreviewAsync(source, true);
+            Assert.Equal(2, exportPreview.Projects.Count);
+            ChatPackExportProject selectedProject = Assert.Single(
+                exportPreview.Projects,
+                item => item.ProjectName == "KeepProject");
+            Assert.Equal(keepId, Assert.Single(selectedProject.SessionIds));
+
+            string package = Path.Combine(root, "selected-project.codex-chatpack");
+            ChatPackExportResult exported = await chatPack.ExportAsync(
+                source,
+                true,
+                package,
+                selectedSessionIds: selectedProject.SessionIds);
+            Assert.Equal(1, exported.SessionCount);
+            Assert.Equal(1, exported.ProjectCount);
+            Assert.Equal(0, exported.AttachmentCount);
+
+            ChatPackPreview packagePreview = await chatPack.ReadPreviewAsync(package, source);
+            ChatPackSessionEntry session = Assert.Single(packagePreview.Manifest.Sessions);
+            Assert.Equal(keepId, session.Id);
+            Assert.Empty(packagePreview.Manifest.Attachments);
+            Assert.Equal("KeepProject", Assert.Single(packagePreview.Mappings).ProjectName);
+            using ZipArchive archive = ZipFile.OpenRead(package);
+            Assert.NotNull(archive.GetEntry($"conversations/{keepId}.jsonl"));
+            Assert.Null(archive.GetEntry($"conversations/{skipId}.jsonl"));
+            Assert.DoesNotContain(archive.Entries, entry => entry.FullName.StartsWith("attachments/", StringComparison.Ordinal));
+        }
+        finally
+        {
+            try
+            {
+                Directory.Delete(root, true);
+            }
+            catch
+            {
+            }
+        }
+    }
+
+    [Fact]
     public async Task ImportCanExcludeAllSessionsFromAnUnselectedProject()
     {
         SqliteRuntime.Initialize();

@@ -1,56 +1,40 @@
 namespace CodexSessionHotSync;
 
-internal sealed class SmoothDataGridView : DataGridView
-{
-    public SmoothDataGridView()
-    {
-        DoubleBuffered = true;
-        SetStyle(
-            ControlStyles.AllPaintingInWmPaint |
-            ControlStyles.OptimizedDoubleBuffer |
-            ControlStyles.ResizeRedraw,
-            true);
-    }
-
-    protected override void OnScroll(ScrollEventArgs e)
-    {
-        base.OnScroll(e);
-        Invalidate();
-    }
-}
-
-internal sealed class ProjectMappingDialog : Form
+internal sealed class ProjectExportDialog : Form
 {
     private readonly ThemePalette _theme;
-    private readonly List<ChatPackProjectMapping> _mappings;
+    private readonly List<ChatPackExportProject> _projects;
     private readonly SmoothDataGridView _grid = new();
     private readonly ModernCheckBox _selectAll = new();
     private readonly Label _selectionSummary = new();
     private readonly Label _validation = new();
-    private readonly Button _importButton;
+    private readonly Button _exportButton;
     private bool _updatingRows;
 
-    public ProjectMappingDialog(
+    public ProjectExportDialog(
         ThemePalette theme,
-        string packagePath,
-        IReadOnlyList<ChatPackProjectMapping> mappings)
+        string codexHome,
+        IReadOnlyList<ChatPackExportProject> projects)
     {
         _theme = theme;
-        _mappings = mappings.Select(item => item with { }).ToList();
-        _importButton = CreateButton("开始导入", true, 118);
+        _projects = projects.Select(item => item with { }).ToList();
+        _exportButton = CreateButton("继续导出", true, 118);
         InitializeWindow();
-        BuildLayout(packagePath);
+        BuildLayout(codexHome);
         PopulateRows();
     }
 
-    public IReadOnlyList<ChatPackProjectMapping> Mappings => _mappings;
+    public IReadOnlySet<string> SelectedSessionIds => _projects
+        .Where(item => item.ExportSessions)
+        .SelectMany(item => item.SessionIds)
+        .ToHashSet(StringComparer.Ordinal);
 
     private void InitializeWindow()
     {
-        Text = "导入聊天记录";
+        Text = "选择导出项目";
         StartPosition = FormStartPosition.CenterParent;
-        ClientSize = new Size(900, 520);
-        MinimumSize = new Size(620, 360);
+        ClientSize = new Size(840, 520);
+        MinimumSize = new Size(560, 360);
         AutoScaleDimensions = new SizeF(96f, 96f);
         AutoScaleMode = AutoScaleMode.Dpi;
         Font = new Font("Segoe UI", 10f);
@@ -83,7 +67,7 @@ internal sealed class ProjectMappingDialog : Form
     private void FitWindowToWorkingArea()
     {
         Rectangle workingArea = Screen.FromControl(this).WorkingArea;
-        int minimumWidth = (int)Math.Round(620 * DeviceDpi / 96d);
+        int minimumWidth = (int)Math.Round(560 * DeviceDpi / 96d);
         int minimumHeight = (int)Math.Round(360 * DeviceDpi / 96d);
         MinimumSize = new Size(
             Math.Min(minimumWidth, workingArea.Width),
@@ -96,7 +80,7 @@ internal sealed class ProjectMappingDialog : Form
             Math.Clamp(Top, workingArea.Top, Math.Max(workingArea.Top, workingArea.Bottom - Height)));
     }
 
-    private void BuildLayout(string packagePath)
+    private void BuildLayout(string codexHome)
     {
         TableLayoutPanel root = new()
         {
@@ -127,7 +111,7 @@ internal sealed class ProjectMappingDialog : Form
         header.RowStyles.Add(new RowStyle(SizeType.Percent, 100));
         Label icon = new()
         {
-            Text = "\uE8E5",
+            Text = "\uE74E",
             Dock = DockStyle.Fill,
             Font = new Font("Segoe Fluent Icons", 23f),
             ForeColor = _theme.Accent,
@@ -135,7 +119,7 @@ internal sealed class ProjectMappingDialog : Form
         };
         Label title = new()
         {
-            Text = "项目路径映射",
+            Text = "选择要导出的项目",
             Dock = DockStyle.Fill,
             Font = new Font("Segoe UI", 18f, FontStyle.Bold),
             ForeColor = _theme.Text,
@@ -144,7 +128,7 @@ internal sealed class ProjectMappingDialog : Form
         };
         Label subtitle = new()
         {
-            Text = Path.GetFileName(packagePath),
+            Text = codexHome,
             Dock = DockStyle.Fill,
             Font = new Font("Segoe UI", 9.5f),
             ForeColor = _theme.MutedText,
@@ -203,8 +187,8 @@ internal sealed class ProjectMappingDialog : Form
         };
         Button cancel = CreateButton("取消", false, 100);
         cancel.DialogResult = DialogResult.Cancel;
-        _importButton.Click += (_, _) => AcceptMappings();
-        actions.Controls.Add(_importButton);
+        _exportButton.Click += (_, _) => AcceptSelection();
+        actions.Controls.Add(_exportButton);
         actions.Controls.Add(cancel);
 
         root.Controls.Add(header, 0, 0);
@@ -213,7 +197,7 @@ internal sealed class ProjectMappingDialog : Form
         root.Controls.Add(_validation, 0, 3);
         root.Controls.Add(actions, 0, 4);
         Controls.Add(root);
-        AcceptButton = _importButton;
+        AcceptButton = _exportButton;
         CancelButton = cancel;
     }
 
@@ -277,51 +261,35 @@ internal sealed class ProjectMappingDialog : Form
             Name = "Project",
             HeaderText = "项目",
             ReadOnly = true,
-            Width = 136,
-            MinimumWidth = 96,
+            Width = 190,
+            MinimumWidth = 130,
         });
         _grid.Columns.Add(new DataGridViewTextBoxColumn
         {
             Name = "Source",
-            HeaderText = "原项目路径",
+            HeaderText = "项目路径",
             ReadOnly = true,
             AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill,
-            FillWeight = 42,
-            MinimumWidth = 128,
+            MinimumWidth = 240,
         });
         _grid.Columns.Add(new DataGridViewTextBoxColumn
         {
             Name = "Count",
             HeaderText = "会话",
             ReadOnly = true,
-            Width = 66,
-            MinimumWidth = 56,
-            DefaultCellStyle = new DataGridViewCellStyle { Alignment = DataGridViewContentAlignment.MiddleCenter },
-        });
-        _grid.Columns.Add(new DataGridViewTextBoxColumn
-        {
-            Name = "Target",
-            HeaderText = "本地项目路径",
-            AutoSizeMode = DataGridViewAutoSizeColumnMode.Fill,
-            FillWeight = 48,
-            MinimumWidth = 156,
-        });
-        _grid.Columns.Add(new DataGridViewButtonColumn
-        {
-            Name = "Browse",
-            HeaderText = string.Empty,
-            Text = "浏览",
-            UseColumnTextForButtonValue = true,
-            Width = 70,
-            MinimumWidth = 62,
-            FlatStyle = FlatStyle.Flat,
+            Width = 78,
+            MinimumWidth = 68,
+            DefaultCellStyle = new DataGridViewCellStyle
+            {
+                Alignment = DataGridViewContentAlignment.MiddleCenter,
+            },
         });
         _grid.Columns.Add(new DataGridViewCheckBoxColumn
         {
-            Name = "Import",
-            HeaderText = "导入",
-            Width = 66,
-            MinimumWidth = 60,
+            Name = "Export",
+            HeaderText = "导出",
+            Width = 78,
+            MinimumWidth = 70,
             ThreeState = false,
             FlatStyle = FlatStyle.Standard,
             DefaultCellStyle = new DataGridViewCellStyle
@@ -330,12 +298,9 @@ internal sealed class ProjectMappingDialog : Form
                 NullValue = true,
             },
         });
-        _grid.CellContentClick += GridCellContentClick;
-        _grid.CellEndEdit += (_, _) => RefreshValidationStyles();
         _grid.CurrentCellDirtyStateChanged += (_, _) =>
         {
-            DataGridViewCell? currentCell = _grid.CurrentCell;
-            if (_grid.IsCurrentCellDirty && currentCell?.OwningColumn?.Name == "Import")
+            if (_grid.IsCurrentCellDirty && _grid.CurrentCell?.OwningColumn?.Name == "Export")
             {
                 _grid.CommitEdit(DataGridViewDataErrorContexts.Commit);
             }
@@ -343,34 +308,26 @@ internal sealed class ProjectMappingDialog : Form
         _grid.CellValueChanged += (_, args) =>
         {
             if (!_updatingRows && args.RowIndex >= 0 && args.ColumnIndex >= 0 &&
-                _grid.Columns[args.ColumnIndex].Name == "Import")
+                _grid.Columns[args.ColumnIndex].Name == "Export")
             {
-                RefreshValidationStyles();
+                RefreshSelectionState();
             }
         };
     }
 
     private void PopulateRows()
     {
-        foreach (ChatPackProjectMapping mapping in _mappings)
+        foreach (ChatPackExportProject project in _projects)
         {
             int rowIndex = _grid.Rows.Add(
-                mapping.ProjectName,
-                mapping.RequiresPathMapping ? mapping.SourcePath : "-",
-                mapping.SessionCount,
-                mapping.RequiresPathMapping ? mapping.TargetPath : "不映射",
-                mapping.RequiresPathMapping ? "浏览" : string.Empty,
-                mapping.ImportSessions);
-            _grid.Rows[rowIndex].Tag = mapping;
-            if (!mapping.RequiresPathMapping)
-            {
-                _grid.Rows[rowIndex].Cells["Target"].ReadOnly = true;
-                _grid.Rows[rowIndex].Cells["Browse"].ReadOnly = true;
-                _grid.Rows[rowIndex].DefaultCellStyle.ForeColor = _theme.MutedText;
-            }
+                project.ProjectName,
+                project.SourcePath.Length > 0 ? project.SourcePath : "-",
+                project.SessionCount,
+                project.ExportSessions);
+            _grid.Rows[rowIndex].Tag = project;
         }
 
-        RefreshValidationStyles();
+        RefreshSelectionState();
     }
 
     private void ToggleAllProjects()
@@ -382,10 +339,10 @@ internal sealed class ProjectMappingDialog : Form
         {
             foreach (DataGridViewRow row in _grid.Rows)
             {
-                row.Cells["Import"].Value = select;
-                if (row.Tag is ChatPackProjectMapping mapping)
+                row.Cells["Export"].Value = select;
+                if (row.Tag is ChatPackExportProject project)
                 {
-                    mapping.ImportSessions = select;
+                    project.ExportSessions = select;
                 }
             }
         }
@@ -394,74 +351,16 @@ internal sealed class ProjectMappingDialog : Form
             _updatingRows = false;
         }
 
-        RefreshValidationStyles();
+        RefreshSelectionState();
     }
 
-    private void GridCellContentClick(object? sender, DataGridViewCellEventArgs e)
-    {
-        if (e.RowIndex < 0 || _grid.Columns[e.ColumnIndex].Name != "Browse" ||
-            _grid.Rows[e.RowIndex].Tag is not ChatPackProjectMapping mapping || !mapping.RequiresPathMapping ||
-            !IsRowIncluded(_grid.Rows[e.RowIndex]))
-        {
-            return;
-        }
-
-        string current = Convert.ToString(_grid.Rows[e.RowIndex].Cells["Target"].Value) ?? string.Empty;
-        using FolderBrowserDialog dialog = new()
-        {
-            Description = $"选择 {mapping.ProjectName} 的本地项目目录",
-            UseDescriptionForTitle = true,
-            SelectedPath = Directory.Exists(current) ? current : Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments),
-            ShowNewFolderButton = false,
-        };
-        if (dialog.ShowDialog(this) == DialogResult.OK)
-        {
-            _grid.Rows[e.RowIndex].Cells["Target"].Value = dialog.SelectedPath;
-            RefreshValidationStyles();
-        }
-    }
-
-    private void AcceptMappings()
+    private void AcceptSelection()
     {
         _grid.EndEdit();
-        List<string> invalid = [];
-        int selectedProjects = 0;
-        foreach (DataGridViewRow row in _grid.Rows)
+        RefreshSelectionState();
+        if (_projects.All(item => !item.ExportSessions))
         {
-            if (row.Tag is not ChatPackProjectMapping mapping)
-            {
-                continue;
-            }
-
-            mapping.ImportSessions = IsRowIncluded(row);
-            if (!mapping.ImportSessions)
-            {
-                continue;
-            }
-
-            selectedProjects++;
-            if (!mapping.RequiresPathMapping)
-            {
-                continue;
-            }
-
-            mapping.TargetPath = Convert.ToString(row.Cells["Target"].Value)?.Trim() ?? string.Empty;
-            if (!Directory.Exists(mapping.TargetPath))
-            {
-                invalid.Add(mapping.ProjectName);
-            }
-        }
-
-        if (selectedProjects == 0)
-        {
-            _validation.Text = "请至少选择一个需要导入的项目。";
-            return;
-        }
-
-        if (invalid.Count > 0)
-        {
-            _validation.Text = "请选择有效的本地项目目录：" + string.Join("、", invalid);
-            RefreshValidationStyles();
+            _validation.Text = "请至少选择一个需要导出的项目。";
             return;
         }
 
@@ -469,63 +368,35 @@ internal sealed class ProjectMappingDialog : Form
         Close();
     }
 
-    private void RefreshValidationStyles()
+    private void RefreshSelectionState()
     {
-        List<string> invalidProjects = [];
         int selectedProjects = 0;
         int selectedSessions = 0;
         foreach (DataGridViewRow row in _grid.Rows)
         {
-            if (row.Tag is not ChatPackProjectMapping mapping)
+            if (row.Tag is not ChatPackExportProject project)
             {
                 continue;
             }
 
             bool included = IsRowIncluded(row);
-            mapping.ImportSessions = included;
+            project.ExportSessions = included;
             row.DefaultCellStyle.ForeColor = included ? _theme.Text : _theme.MutedText;
-            row.DefaultCellStyle.BackColor = _theme.Surface;
-            row.Cells["Target"].ReadOnly = !mapping.RequiresPathMapping || !included;
-            row.Cells["Browse"].ReadOnly = !mapping.RequiresPathMapping || !included;
-            row.Cells["Browse"].Value = !mapping.RequiresPathMapping || !included ? string.Empty : "浏览";
             if (included)
             {
                 selectedProjects++;
-                selectedSessions += mapping.SessionCount;
-            }
-
-            if (!mapping.RequiresPathMapping || !included)
-            {
-                row.Cells["Target"].Style.ForeColor = _theme.MutedText;
-                row.Cells["Target"].Style.BackColor = _theme.Surface;
-                continue;
-            }
-
-            string path = Convert.ToString(row.Cells["Target"].Value)?.Trim() ?? string.Empty;
-            bool valid = Directory.Exists(path);
-            row.Cells["Target"].Style.ForeColor = valid ? _theme.Text : _theme.Warning;
-            row.Cells["Target"].Style.BackColor = valid
-                ? _theme.Surface
-                : BlendOpaque(_theme.Surface, _theme.Warning, _theme.IsDark ? 0.18f : 0.09f);
-            if (!valid)
-            {
-                invalidProjects.Add(mapping.ProjectName);
+                selectedSessions += project.SessionCount;
             }
         }
 
-        _validation.Text = selectedProjects == 0
-            ? "请至少选择一个需要导入的项目。"
-            : invalidProjects.Count > 0
-                ? "请选择有效的本地项目目录：" + string.Join("、", invalidProjects)
-                : string.Empty;
-
-        _selectAll.Checked = selectedProjects == _mappings.Count && _mappings.Count > 0;
-        _selectionSummary.Text = $"已选择 {selectedProjects:N0}/{_mappings.Count:N0} 个项目 · {selectedSessions:N0} 个会话";
+        _selectAll.Checked = selectedProjects == _projects.Count && _projects.Count > 0;
+        _selectionSummary.Text = $"已选择 {selectedProjects:N0}/{_projects.Count:N0} 个项目 · {selectedSessions:N0} 个会话";
+        _validation.Text = selectedProjects == 0 ? "请至少选择一个需要导出的项目。" : string.Empty;
         _grid.Invalidate();
     }
 
-    private bool IsRowIncluded(DataGridViewRow row) =>
-        row.Cells["Import"].Value is not false;
+    private static bool IsRowIncluded(DataGridViewRow row) =>
+        row.Cells["Export"].Value is not false;
 
     private void ApplyGridDpiMetrics()
     {
@@ -538,17 +409,15 @@ internal sealed class ProjectMappingDialog : Form
         }
 
         _grid.ColumnHeadersHeight = Scale(44);
-        SetColumnMetrics("Project", 136, 96);
-        SetColumnMetrics("Source", null, 128);
-        SetColumnMetrics("Count", 66, 56);
-        SetColumnMetrics("Target", null, 156);
-        SetColumnMetrics("Browse", 70, 62);
-        SetColumnMetrics("Import", 66, 60);
+        SetColumnMetrics("Project", 190, 130);
+        SetColumnMetrics("Source", null, 240);
+        SetColumnMetrics("Count", 78, 68);
+        SetColumnMetrics("Export", 78, 70);
 
         void SetColumnMetrics(string name, int? width, int minimumWidth)
         {
             DataGridViewColumn column = _grid.Columns[name]
-                ?? throw new InvalidOperationException($"缺少导入表格列：{name}");
+                ?? throw new InvalidOperationException($"缺少导出表格列：{name}");
             column.MinimumWidth = Scale(minimumWidth);
             if (width.HasValue)
             {

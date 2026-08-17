@@ -10,8 +10,10 @@ Codex Session Management 是一款面向 Windows 的 Codex 会话同步与迁移
 - 修复模型提供商切换后缺失或不可见的历史会话
 - 在修改前创建一致性备份，并支持自定义备份保存路径
 - 将聊天记录和关联附件压缩导出为 `.codex-chatpack`
+- 导出前按项目选择需要打包的聊天记录
 - 叠加导入聊天包，自动跳过同 ID 的已有会话
 - 按项目选择是否导入，并将原项目路径映射到本机目录
+- 导入和导出项目列表支持一键全选或取消全选
 - 支持已归档会话和高 DPI 多屏环境
 
 ## 环境要求
@@ -38,10 +40,10 @@ dotnet run --project CodexSessionHotSync.csproj -c Release
 
 ## 生成安装包
 
-当前应用版本为 `1.2.1`。先发布自包含程序，再构建 WiX 安装器：
+当前应用版本为 `1.3.0`。先发布自包含程序，再构建 WiX 安装器：
 
 ```powershell
-dotnet publish CodexSessionHotSync.csproj -c Release -r win-x64 --self-contained true -o publish/1.2.1
+dotnet publish CodexSessionHotSync.csproj -c Release -r win-x64 --self-contained true -o publish/1.3.0
 dotnet build installer/CodexSessionHotSync.Installer.wixproj -c Release -p:Platform=x64
 ```
 
